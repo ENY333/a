@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b0f19">
+  <title>CLOUD 2FA Authenticator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><div class="logo">⌁</div><div><strong>CLOUD 2FA</strong><span>Authenticator</span></div></div>
+      <div class="top-actions">
+        <button id="themeBtn" class="icon-btn" title="Đổi giao diện">☾</button>
+        <button id="addTopBtn" class="primary">＋ Thêm key</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <div class="eyebrow">LOCAL AUTHENTICATOR</div>
+          <h1>Mã xác thực của bạn.</h1>
+          <p>Quản lý nhiều TOTP key ngay trên trình duyệt. Secret được lưu trong bộ nhớ cục bộ của thiết bị.</p>
+        </div>
+        <div class="privacy">🔒 Local only</div>
+      </section>
+
+      <section class="stats">
+        <div class="stat"><span>Tài khoản</span><b id="countStat">0</b></div>
+        <div class="stat"><span>Chu kỳ</span><b>30s</b></div>
+        <div class="stat"><span>Thuật toán</span><b>SHA-1</b></div>
+      </section>
+
+      <section id="emptyState" class="empty">
+        <div class="empty-icon">＋</div>
+        <h2>Chưa có key nào</h2>
+        <p>Thêm Secret Key hoặc dán URI <code>otpauth://</code> để bắt đầu.</p>
+        <button id="emptyAddBtn" class="primary">＋ Thêm 2FA key</button>
+      </section>
+
+      <section id="keyList" class="key-list"></section>
+    </main>
+
+    <footer>
+      <span>© CLOUD 2FA</span>
+      <span>Secret không được gửi lên server</span>
+    </footer>
+  </div>
+
+  <div id="modal" class="modal hidden">
+    <div class="backdrop"></div>
+    <div class="dialog">
+      <div class="dialog-head">
+        <div><div class="eyebrow">NEW ACCOUNT</div><h2>Thêm 2FA key</h2></div>
+        <button id="closeModal" class="icon-btn">×</button>
+      </div>
+
+      <label>Tên hiển thị</label>
+      <input id="nameInput" maxlength="80" placeholder="Ví dụ: Gmail chính">
+
+      <label>Secret Key hoặc otpauth URI</label>
+      <textarea id="secretInput" rows="4" spellcheck="false" placeholder="JBSWY3DPEHPK3PXP"></textarea>
+
+      <div class="row">
+        <div><label>Digits</label><select id="digitsInput"><option value="6">6</option><option value="8">8</option></select></div>
+        <div><label>Algorithm</label><select id="algorithmInput"><option>SHA-1</option><option>SHA-256</option><option>SHA-512</option></select></div>
+        <div><label>Period</label><select id="periodInput"><option value="30">30s</option><option value="60">60s</option><option value="15">15s</option></select></div>
+      </div>
+
+      <div id="formError" class="error hidden"></div>
+      <button id="saveBtn" class="primary full">Lưu key</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
