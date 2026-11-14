@@ -1,80 +1,97 @@
 <!doctype html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#0b0f19">
-  <title>CLOUD 2FA Authenticator</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#080c15">
+<title>CLOUD 2FA</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app">
-    <header class="topbar">
-      <div class="brand"><div class="logo">⌁</div><div><strong>CLOUD 2FA</strong><span>Authenticator</span></div></div>
-      <div class="top-actions">
-        <button id="themeBtn" class="icon-btn" title="Đổi giao diện">☾</button>
-        <button id="addTopBtn" class="primary">＋ Thêm key</button>
-      </div>
-    </header>
+<div class="app">
+<header>
+  <div class="brand"><div class="logo">⌁</div><div><b>CLOUD 2FA</b><small>Authenticator</small></div></div>
+  <button id="addBtn" class="primary">＋ Thêm tài khoản</button>
+</header>
 
-    <main>
-      <section class="hero">
-        <div>
-          <div class="eyebrow">LOCAL AUTHENTICATOR</div>
-          <h1>Mã xác thực của bạn.</h1>
-          <p>Quản lý nhiều TOTP key ngay trên trình duyệt. Secret được lưu trong bộ nhớ cục bộ của thiết bị.</p>
-        </div>
-        <div class="privacy">🔒 Local only</div>
-      </section>
+<main>
+<section class="hero">
+  <div><span class="eyebrow">AUTHENTICATOR</span><h1>Quản lý mã 2FA</h1>
+  <p>Nhập Secret Key theo nhiều dạng. Hệ thống tự nhận diện và lưu từng tài khoản trên thiết bị.</p></div>
+  <span class="local">🔒 LOCAL ONLY</span>
+</section>
 
-      <section class="stats">
-        <div class="stat"><span>Tài khoản</span><b id="countStat">0</b></div>
-        <div class="stat"><span>Chu kỳ</span><b>30s</b></div>
-        <div class="stat"><span>Thuật toán</span><b>SHA-1</b></div>
-      </section>
+<div class="stats">
+ <div><small>Tài khoản</small><b id="count">0</b></div>
+ <div><small>Loại</small><b>TOTP</b></div>
+ <div><small>Chu kỳ mặc định</small><b>30s</b></div>
+</div>
 
-      <section id="emptyState" class="empty">
-        <div class="empty-icon">＋</div>
-        <h2>Chưa có key nào</h2>
-        <p>Thêm Secret Key hoặc dán URI <code>otpauth://</code> để bắt đầu.</p>
-        <button id="emptyAddBtn" class="primary">＋ Thêm 2FA key</button>
-      </section>
+<section id="empty" class="empty">
+ <div class="plus">＋</div><h2>Chưa có tài khoản</h2>
+ <p>Thêm tài khoản bằng Secret Key, otpauth URI hoặc dữ liệu từ trang thiết lập 2FA.</p>
+ <button id="emptyAdd" class="primary">＋ Thêm 2FA</button>
+</section>
+<section id="list" class="list"></section>
+</main>
+<footer><span>CLOUD 2FA</span><span>Secret chỉ được xử lý trên trình duyệt</span></footer>
+</div>
 
-      <section id="keyList" class="key-list"></section>
-    </main>
-
-    <footer>
-      <span>© CLOUD 2FA</span>
-      <span>Secret không được gửi lên server</span>
-    </footer>
+<div id="modal" class="modal hidden">
+ <div class="backdrop"></div>
+ <div class="dialog">
+  <div class="dialog-head">
+   <div><span class="eyebrow">ADD AUTHENTICATOR</span><h2>Thêm tài khoản 2FA</h2></div>
+   <button id="close" class="x">×</button>
   </div>
 
-  <div id="modal" class="modal hidden">
-    <div class="backdrop"></div>
-    <div class="dialog">
-      <div class="dialog-head">
-        <div><div class="eyebrow">NEW ACCOUNT</div><h2>Thêm 2FA key</h2></div>
-        <button id="closeModal" class="icon-btn">×</button>
-      </div>
-
-      <label>Tên hiển thị</label>
-      <input id="nameInput" maxlength="80" placeholder="Ví dụ: Gmail chính">
-
-      <label>Secret Key hoặc otpauth URI</label>
-      <textarea id="secretInput" rows="4" spellcheck="false" placeholder="JBSWY3DPEHPK3PXP"></textarea>
-
-      <div class="row">
-        <div><label>Digits</label><select id="digitsInput"><option value="6">6</option><option value="8">8</option></select></div>
-        <div><label>Algorithm</label><select id="algorithmInput"><option>SHA-1</option><option>SHA-256</option><option>SHA-512</option></select></div>
-        <div><label>Period</label><select id="periodInput"><option value="30">30s</option><option value="60">60s</option><option value="15">15s</option></select></div>
-      </div>
-
-      <div id="formError" class="error hidden"></div>
-      <button id="saveBtn" class="primary full">Lưu key</button>
-    </div>
+  <div class="tabs">
+   <button class="tab active" data-mode="key">Secret Key</button>
+   <button class="tab" data-mode="uri">otpauth URI</button>
+   <button class="tab" data-mode="paste">Dán dữ liệu</button>
   </div>
 
-  <div id="toast" class="toast"></div>
-  <script src="app.js"></script>
+  <div id="keyMode">
+   <label>Tên tài khoản</label>
+   <input id="name" placeholder="Ví dụ: Gmail chính">
+   <label>Email / tài khoản <span class="optional">(tùy chọn)</span></label>
+   <input id="account" placeholder="example@gmail.com">
+   <label>Secret Key</label>
+   <textarea id="secret" rows="3" spellcheck="false" placeholder="JBSWY3DPEHPK3PXP"></textarea>
+   <div class="hint">Chấp nhận key có khoảng trắng, dấu gạch ngang và dấu =.</div>
+  </div>
+
+  <div id="uriMode" class="hidden">
+   <label>otpauth URI</label>
+   <textarea id="uri" rows="5" spellcheck="false" placeholder="otpauth://totp/Gmail:example@gmail.com?secret=JBSWY3DPEHPK3PXP&issuer=Google"></textarea>
+   <div class="hint">Tự lấy tên, issuer, secret, digits, algorithm và period nếu URI có sẵn.</div>
+  </div>
+
+  <div id="pasteMode" class="hidden">
+   <label>Dán nội dung từ trang thiết lập 2FA</label>
+   <textarea id="paste" rows="7" spellcheck="false" placeholder="Email: example@gmail.com
+Key: JBSW Y3DP EHPK 3PXP
+Type: Time based
+Digits: 6
+Algorithm: SHA-1
+Period: 30"></textarea>
+   <div class="hint">Có thể dán cả đoạn hướng dẫn chứa Email + Key. CLOUD sẽ cố gắng tự tìm Secret Key.</div>
+  </div>
+
+  <div class="advanced">
+   <label class="check"><input id="advancedToggle" type="checkbox"> Hiện tùy chọn nâng cao</label>
+   <div id="advancedFields" class="advanced-fields hidden">
+    <div><label>Digits</label><select id="digits"><option>6</option><option>8</option></select></div>
+    <div><label>Algorithm</label><select id="algorithm"><option>SHA-1</option><option>SHA-256</option><option>SHA-512</option></select></div>
+    <div><label>Period</label><select id="period"><option>30</option><option>60</option><option>15</option></select></div>
+   </div>
+  </div>
+
+  <div id="error" class="error hidden"></div>
+  <button id="save" class="primary full">✓ Lưu tài khoản</button>
+ </div>
+</div>
+<div id="toast" class="toast"></div>
+<script src="app.js"></script>
 </body>
 </html>

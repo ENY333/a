@@ -1,28 +1,25 @@
-# CLOUD 2FA Authenticator
+# CLOUD 2FA Authenticator V2
 
-Web TOTP authenticator chạy thuần frontend, phù hợp deploy GitHub Pages hoặc Vercel.
+## Nhập nhiều dạng
 
-## Tính năng
-- Thêm Secret Key TOTP
-- Dán `otpauth://totp/...`
-- Tự tạo OTP 6/8 số
-- SHA-1 / SHA-256 / SHA-512
-- Chu kỳ 15/30/60 giây
-- Lưu nhiều key bằng `localStorage`
-- Đặt tên / đổi tên / xóa key
-- Copy OTP
-- Dark / Light mode
-- Không cần backend
-- Secret không được gửi lên server
+1. **Secret Key**
+   - `JBSWY3DPEHPK3PXP`
+   - `JBSW Y3DP EHPK 3PXP`
+   - `JBSW-Y3DP-EHPK-3PXP`
+   - Có thể có dấu `=`
 
-## Lưu ý bảo mật
-Secret được lưu trong localStorage của trình duyệt dưới dạng plaintext. Đây là bản local-first tiện dụng, không phải vault bảo mật chuyên dụng. Không dùng trên máy tính dùng chung hoặc máy không đáng tin cậy.
+2. **otpauth URI**
+   - `otpauth://totp/...?...`
+   - Tự lấy secret, issuer, digits, algorithm, period.
 
-## Deploy GitHub Pages
-1. Tạo repository.
-2. Upload `index.html`, `style.css`, `app.js`, `README.md`.
-3. Vào Settings → Pages.
-4. Chọn Deploy from branch → `main` → `/root`.
-5. Save.
+3. **Dán dữ liệu**
+   Có thể dán cả đoạn hướng dẫn như:
+   Email: example@gmail.com
+   Key: JBSW Y3DP EHPK 3PXP
+   Type: Time based
+   Digits: 6
+   Algorithm: SHA-1
+   Period: 30
 
-Không cần Node.js, npm hoặc backend.
+## Lưu trữ
+Key được lưu local trên trình duyệt bằng localStorage. Không có backend/API gửi secret lên Vercel.

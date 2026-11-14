@@ -1,179 +1,96 @@
-const STORAGE_KEY = "cloud_2fa_accounts_v1";
-const $ = s => document.querySelector(s);
-let accounts = loadAccounts();
+const KEY="cloud_2fa_accounts_v2";
+let accounts=JSON.parse(localStorage.getItem(KEY)||"[]");
+const $=s=>document.querySelector(s);
 
-function loadAccounts(){
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
-  catch { return []; }
+function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random()}
+function save(){localStorage.setItem(KEY,JSON.stringify(accounts))}
+function cleanSecret(s){return String(s||"").toUpperCase().replace(/[\s\-_=]/g,"")}
+function base32(s){
+ s=cleanSecret(s);if(!s)throw Error("Chưa nhập Secret Key.");
+ const abc="ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";let bits="",out=[];
+ for(const c of s){let n=abc.indexOf(c);if(n<0)throw Error("Secret Key không hợp lệ.");bits+=n.toString(2).padStart(5,"0")}
+ for(let i=0;i+8<=bits.length;i+=8)out.push(parseInt(bits.slice(i,i+8),2));
+ return new Uint8Array(out)
 }
-function persist(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts)); }
-function uid(){ return crypto.randomUUID ? crypto.randomUUID() : Date.now()+"-"+Math.random(); }
-
-function base32Decode(str){
-  const clean = str.toUpperCase().replace(/[\s-]/g,"").replace(/=+$/,"");
-  const alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  let bits="", out=[];
-  for(const ch of clean){
-    const n=alphabet.indexOf(ch);
-    if(n<0) throw new Error("Secret Key không hợp lệ.");
-    bits += n.toString(2).padStart(5,"0");
-  }
-  for(let i=0;i+8<=bits.length;i+=8) out.push(parseInt(bits.slice(i,i+8),2));
-  return new Uint8Array(out);
+function alg(a){return a==="SHA-256"?"SHA-256":a==="SHA-512"?"SHA-512":"SHA-1"}
+function parseUri(raw){
+ let u;try{u=new URL(raw.trim())}catch{throw Error("otpauth URI không hợp lệ.")}
+ if(u.protocol!=="otpauth:"||u.host!=="totp")throw Error("URI phải có dạng otpauth://totp/...")
+ const secret=u.searchParams.get("secret");if(!secret)throw Error("URI không có secret.")
+ return {secret,name:decodeURIComponent(u.pathname.slice(1))||"2FA Account",issuer:u.searchParams.get("issuer")||"",digits:+(u.searchParams.get("digits")||6),algorithm:alg((u.searchParams.get("algorithm")||"SHA-1").toUpperCase().replace("SHA1","SHA-1")),period:+(u.searchParams.get("period")||30)}
 }
-function parseOtpAuth(raw){
-  if(!raw.trim().toLowerCase().startsWith("otpauth://")) return null;
-  const u=new URL(raw.trim());
-  if(u.protocol!=="otpauth:" || u.host!=="totp") throw new Error("Chỉ hỗ trợ otpauth://totp/...");
-
-  const secret=u.searchParams.get("secret");
-  if(!secret) throw new Error("URI chưa có secret.");
-  return {
-    name: decodeURIComponent(u.pathname.replace(/^\/+/,"")) || "2FA Account",
-    issuer: u.searchParams.get("issuer") || "",
-    secret,
-    digits: Number(u.searchParams.get("digits") || 6),
-    algorithm: (u.searchParams.get("algorithm") || "SHA1").toUpperCase().replace("-","-"),
-    period: Number(u.searchParams.get("period") || 30)
-  };
+function findKey(text){
+ const uri=text.match(/otpauth:\/\/totp\/[^\s<>"']+/i);if(uri)return {uri:uri[0],...parseUri(uri[0])};
+ const lines=text.split(/\r?\n/);
+ let email="",key="";
+ for(const l of lines){
+  if(/email|account|username/i.test(l)&&!email){let m=l.match(/(?:email|account|username)\s*[:=]\s*(.+)/i);if(m)email=m[1].trim()}
+  if(/(?:secret\s*key|security\s*key|key|mã|ma)\s*[:=]/i.test(l)&&!key){let m=l.match(/(?:secret\s*key|security\s*key|key|mã|ma)\s*[:=]\s*([A-Za-z2-7\s=-]{8,})/i);if(m)key=m[1]}
+ }
+ if(!key){
+  const candidates=text.match(/\b[A-Z2-7](?:[\s-]*[A-Z2-7]){15,}\b/gi)||[];
+  key=candidates.sort((a,b)=>b.length-a.length)[0]||"";
+ }
+ if(!key)throw Error("Không tìm thấy Secret Key. Hãy nhập key hoặc dán otpauth URI.");
+ return {secret:cleanSecret(key),email}
 }
-function algoName(a){ return a === "SHA-256" ? "SHA-256" : a === "SHA-512" ? "SHA-512" : "SHA-1"; }
-
-async function hotp(secret, counter, digits, algorithm){
-  const key=await crypto.subtle.importKey("raw",base32Decode(secret),{name:"HMAC",hash:{name:algoName(algorithm)}},false,["sign"]);
-  const buf=new ArrayBuffer(8), view=new DataView(buf);
-  view.setUint32(0,Math.floor(counter/0x100000000));
-  view.setUint32(4,counter>>>0);
-  const mac=new Uint8Array(await crypto.subtle.sign("HMAC",key,buf));
-  const offset=mac[mac.length-1]&15;
-  const bin=((mac[offset]&127)<<24)|((mac[offset+1]&255)<<16)|((mac[offset+2]&255)<<8)|(mac[offset+3]&255);
-  return String(bin % 10**digits).padStart(digits,"0");
+async function hotp(a,c){
+ const k=await crypto.subtle.importKey("raw",base32(a.secret),{name:"HMAC",hash:{name:alg(a.algorithm)}},false,["sign"]);
+ const b=new ArrayBuffer(8),v=new DataView(b);v.setUint32(0,Math.floor(c/4294967296));v.setUint32(4,c>>>0);
+ const m=new Uint8Array(await crypto.subtle.sign("HMAC",k,b)),o=m[m.length-1]&15;
+ const n=((m[o]&127)<<24)|((m[o+1]&255)<<16)|((m[o+2]&255)<<8)|(m[o+3]&255);
+ return String(n%(10**a.digits)).padStart(a.digits,"0")
 }
-async function totp(account, now=Date.now()){
-  const period=account.period || 30;
-  const counter=Math.floor(now/1000/period);
-  return hotp(account.secret,counter,account.digits||6,account.algorithm||"SHA-1");
-}
-
-function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));}
+async function otp(a){return hotp(a,Math.floor(Date.now()/1000/(a.period||30)))}
 
 function render(){
-  $("#countStat").textContent=accounts.length;
-  $("#emptyState").classList.toggle("hidden",accounts.length!==0);
-  const list=$("#keyList");
-  list.innerHTML="";
-  accounts.forEach(a=>{
-    const card=document.createElement("article");
-    card.className="card";
-    card.dataset.id=a.id;
-    card.innerHTML=`
-      <div class="card-top">
-        <div>
-          <div class="account">${esc(a.name || "2FA Account")}</div>
-          <div class="meta">${esc(a.issuer || "Local TOTP")} · ${a.digits||6} digits · ${esc(a.algorithm||"SHA-1")}</div>
-        </div>
-        <div class="menu">
-          <button class="menu-btn" aria-label="Menu">⋮</button>
-          <div class="menu-pop">
-            <button class="rename-btn">Đổi tên</button>
-            <button class="delete delete-btn">Xóa key</button>
-          </div>
-        </div>
-      </div>
-      <div class="code-row"><div class="code">------</div><button class="copy">Copy</button></div>
-      <div class="progress"><i></i></div>
-      <div class="count"><span>Refresh tự động</span><span class="seconds">--s</span></div>`;
-    list.appendChild(card);
-  });
+ $("#count").textContent=accounts.length;$("#empty").classList.toggle("hidden",accounts.length>0);$("#list").innerHTML="";
+ for(const a of accounts){
+  let c=document.createElement("article");c.className="card";c.dataset.id=a.id;
+  c.innerHTML=`<div class="top"><div><div class="name">${esc(a.name)}</div><div class="meta">${esc(a.account||a.issuer||"TOTP")} · ${a.digits} digits · ${a.algorithm}</div></div>
+  <div class="menu"><button class="menubtn">⋮</button><div class="pop"><button class="rename">Đổi tên</button><button class="del delete">Xóa key</button></div></div></div>
+  <div class="code-row"><div class="code">------</div><button class="copy">Copy</button></div>
+  <div class="bar"><i></i></div><div class="bottom"><span>TOTP · tự động đổi</span><span class="left">--s</span></div>`;
+  $("#list").appendChild(c)
+ }
 }
-function openModal(account=null){
-  $("#modal").classList.remove("hidden");
-  $("#formError").classList.add("hidden");
-  $("#nameInput").value=account?.name||"";
-  $("#secretInput").value=account?.secret||"";
-  $("#digitsInput").value=account?.digits||6;
-  $("#algorithmInput").value=account?.algorithm||"SHA-1";
-  $("#periodInput").value=account?.period||30;
-  $("#saveBtn").dataset.editId=account?.id||"";
-  $("#nameInput").focus();
-}
-function closeModal(){$("#modal").classList.add("hidden");}
-function toast(msg){
-  const t=$("#toast");t.textContent=msg;t.classList.add("show");
-  clearTimeout(window.__toast);window.__toast=setTimeout(()=>t.classList.remove("show"),1800);
-}
-
-async function saveAccount(){
-  const raw=$("#secretInput").value.trim();
-  const err=$("#formError");
-  try{
-    let parsed=parseOtpAuth(raw);
-    const secret=parsed?.secret || raw.replace(/\s/g,"");
-    base32Decode(secret);
-    if(!secret) throw new Error("Hãy nhập Secret Key.");
-    const account={
-      id:$("#saveBtn").dataset.editId || uid(),
-      name:$("#nameInput").value.trim() || parsed?.name || "2FA Account",
-      issuer:parsed?.issuer || "",
-      secret,
-      digits:Number(parsed?.digits || $("#digitsInput").value),
-      algorithm:parsed?.algorithm ? algoName(parsed.algorithm) : $("#algorithmInput").value,
-      period:Number(parsed?.period || $("#periodInput").value),
-      createdAt:Date.now()
-    };
-    const test=await totp(account);
-    if(!/^\\d+$/.test(test)) throw new Error("Không tạo được OTP.");
-    const idx=accounts.findIndex(x=>x.id===account.id);
-    if(idx>=0) accounts[idx]=account; else accounts.unshift(account);
-    persist(); render(); closeModal(); toast("Đã lưu key.");
-  }catch(e){
-    err.textContent=e.message||"Secret Key không hợp lệ.";
-    err.classList.remove("hidden");
-  }
-}
+function esc(s){return String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function openModal(){ $("#modal").classList.remove("hidden");$("#error").classList.add("hidden");$("#name").focus() }
+function closeModal(){$("#modal").classList.add("hidden")}
+function toast(s){let t=$("#toast");t.textContent=s;t.classList.add("show");clearTimeout(window.tt);window.tt=setTimeout(()=>t.classList.remove("show"),1700)}
 
 document.addEventListener("click",async e=>{
-  if(e.target.id==="addTopBtn"||e.target.id==="emptyAddBtn") openModal();
-  if(e.target.id==="closeModal"||e.target.classList.contains("backdrop")) closeModal();
-  if(e.target.id==="saveBtn") await saveAccount();
-  if(e.target.id==="themeBtn"){
-    document.body.classList.toggle("light");
-    localStorage.setItem("cloud_2fa_theme",document.body.classList.contains("light")?"light":"dark");
-  }
-  if(e.target.classList.contains("menu-btn")){
-    const pop=e.target.nextElementSibling;
-    document.querySelectorAll(".menu-pop").forEach(x=>x!==pop&&x.classList.remove("show"));
-    pop.classList.toggle("show");
-  }
-  if(e.target.classList.contains("delete-btn")){
-    const id=e.target.closest(".card").dataset.id;
-    if(confirm("Xóa key này khỏi trình duyệt?")){
-      accounts=accounts.filter(x=>x.id!==id);persist();render();toast("Đã xóa key.");
-    }
-  }
-  if(e.target.classList.contains("rename-btn")){
-    const card=e.target.closest(".card"), id=card.dataset.id, a=accounts.find(x=>x.id===id);
-    const name=prompt("Tên mới:",a.name);
-    if(name!==null && name.trim()){a.name=name.trim();persist();render();toast("Đã đổi tên.");}
-  }
-  if(e.target.classList.contains("copy")){
-    const code=e.target.closest(".card").querySelector(".code").textContent;
-    if(code!=="------"){await navigator.clipboard.writeText(code);toast("Đã copy OTP.");}
-  }
+ if(e.target.id==="addBtn"||e.target.id==="emptyAdd")openModal();
+ if(e.target.id==="close"||e.target.classList.contains("backdrop"))closeModal();
+ if(e.target.classList.contains("tab")){
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));e.target.classList.add("active");
+  ["keyMode","uriMode","pasteMode"].forEach(x=>$("#"+x).classList.add("hidden"));$("#"+e.target.dataset.mode+"Mode").classList.remove("hidden");
+ }
+ if(e.target.id==="advancedToggle")$("#advancedFields").classList.toggle("hidden");
+ if(e.target.id==="save"){
+  try{
+   let mode=document.querySelector(".tab.active").dataset.mode, data;
+   if(mode==="uri")data=parseUri($("#uri").value);
+   else if(mode==="paste")data=findKey($("#paste").value);
+   else data={secret:cleanSecret($("#secret").value),name:$("#name").value.trim(),account:$("#account").value.trim()};
+   if(!data.secret)throw Error("Chưa nhập Secret Key.");
+   base32(data.secret);
+   let a={id:uid(),name:data.name||data.account||"2FA Account",account:data.account||"",issuer:data.issuer||"",secret:data.secret,digits:data.digits||+$("#digits").value,algorithm:data.algorithm||$("#algorithm").value,period:data.period||+$("#period").value};
+   await otp(a);accounts.unshift(a);save();render();closeModal();toast("Đã lưu tài khoản.");
+  }catch(err){$("#error").textContent=err.message||"Dữ liệu không hợp lệ.";$("#error").classList.remove("hidden")}
+ }
+ if(e.target.classList.contains("menubtn")){let p=e.target.nextElementSibling;document.querySelectorAll(".pop").forEach(x=>x!==p&&x.classList.remove("show"));p.classList.toggle("show")}
+ if(e.target.classList.contains("delete")){let id=e.target.closest(".card").dataset.id;if(confirm("Xóa key này khỏi trình duyệt?")){accounts=accounts.filter(x=>x.id!==id);save();render();toast("Đã xóa.")}}
+ if(e.target.classList.contains("rename")){let a=accounts.find(x=>x.id===e.target.closest(".card").dataset.id),n=prompt("Tên mới:",a.name);if(n&&n.trim()){a.name=n.trim();save();render();toast("Đã đổi tên.")}}
+ if(e.target.classList.contains("copy")){let code=e.target.closest(".card").querySelector(".code").textContent;if(code!=="------"){await navigator.clipboard.writeText(code);toast("Đã copy OTP.")}}
 });
-$("#secretInput").addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key==="Enter")saveAccount();});
-if(localStorage.getItem("cloud_2fa_theme")==="light")document.body.classList.add("light");
-
-async function refreshCodes(){
-  const now=Date.now();
-  document.querySelectorAll(".card").forEach(async card=>{
-    const a=accounts.find(x=>x.id===card.dataset.id); if(!a)return;
-    try{
-      card.querySelector(".code").textContent=await totp(a,now);
-      const period=a.period||30, elapsed=Math.floor(now/1000)%period, left=period-elapsed;
-      card.querySelector(".seconds").textContent=left+"s";
-      card.querySelector(".progress i").style.width=(left/period*100)+"%";
-    }catch{card.querySelector(".code").textContent="ERROR";}
-  });
+$("#secret").addEventListener("input",()=>{$("#secret").value=$("#secret").value.replace(/[^\x00-\x7F]/g,"")});
+render();
+async function tick(){
+ const now=Date.now();
+ for(const c of document.querySelectorAll(".card")){
+  const a=accounts.find(x=>x.id===c.dataset.id);if(!a)continue;
+  try{c.querySelector(".code").textContent=await otp(a);let p=a.period||30,left=p-(Math.floor(now/1000)%p);c.querySelector(".left").textContent=left+"s";c.querySelector(".bar i").style.width=(left/p*100)+"%"}catch{c.querySelector(".code").textContent="ERROR"}
+ }
 }
-render(); refreshCodes(); setInterval(refreshCodes,1000);
+tick();setInterval(tick,1000)
